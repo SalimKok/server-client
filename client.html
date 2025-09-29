@@ -1,0 +1,51 @@
+<h2>Mesaj Gönder / Mesajları Getir</h2>
+<input id="msg" type="text" placeholder="Mesajınızı yazın">
+<input id="img" type="file" placeholder="resim seçin" accept="image/*">
+<input id="aud" type="file" accept="audio/*">
+<button id="send">Gönder</button>
+<button id="refresh">Mesajları Getir</button>
+
+<div id="list"></div>
+
+<script>
+const API = 'http://127.0.0.1:5000/messages';
+const msgInput = document.getElementById('msg');
+const imgInput = document.getElementById('img');
+const audInput = document.getElementById('aud');
+const listDiv = document.getElementById('list');
+
+async function loadMessages() {
+  const res = await fetch(API);
+  const data = await res.json();
+  render(data);
+}
+
+async function sendMessage() {
+  const formData = new FormData();
+  formData.append('text', msgInput.value.trim());
+  if (imgInput.files[0]) formData.append('image', imgInput.files[0]);
+  if (audInput.files[0]) formData.append('audio', audInput.files[0]);
+
+  await fetch(API, { method: 'POST', body: formData });
+  msgInput.value = '';
+  imgInput.value = '';
+  audInput.value = '';
+  loadMessages();
+}
+
+function render(arr) {
+  if (!Array.isArray(arr) || arr.length === 0) {
+    listDiv.innerHTML = '<p>Henüz mesaj yok.</p>';
+    return;
+  }
+  listDiv.innerHTML = arr.map((m, i) => {
+    let html = `<div class="item"><strong>#${i+1}</strong> ${m.text || ''}`;
+    if (m.image) html += `<br><img src="http://127.0.0.1:5000/uploads/${m.image}" style="max-width:200px;">`;
+    if (m.audio) html += `<br><audio controls src="http://127.0.0.1:5000/uploads/${m.audio}"></audio>`;
+    return html + '</div>';
+  }).join('');
+}
+
+document.getElementById('send').addEventListener('click', sendMessage);
+document.getElementById('refresh').addEventListener('click', loadMessages);
+</script>
