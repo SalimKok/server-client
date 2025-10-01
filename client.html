@@ -1,51 +1,156 @@
-<h2>Mesaj Gönder / Mesajları Getir</h2>
-<input id="msg" type="text" placeholder="Mesajınızı yazın">
-<input id="img" type="file" placeholder="resim seçin" accept="image/*">
-<input id="aud" type="file" accept="audio/*">
-<button id="send">Gönder</button>
-<button id="refresh">Mesajları Getir</button>
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Şifreleme Arayüzü</title>
+<style>
+/* Genel stil */
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    display: flex;
+    justify-content: space-around;
+    padding: 40px;
+    background: linear-gradient(to right, #83a4d4, #b6fbff);
+    min-height: 100vh;
+    margin: 0;
+    color: #333;
+}
 
-<div id="list"></div>
+/* Kutular */
+.box {
+    max-height: 400px;
+    width: 45%;
+    padding: 30px;
+    border-radius: 15px;
+    background: #ffffffdd;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/* Başlıklar */
+h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    color: #1a1a2e;
+}
+
+/* Form elemanları */
+input, textarea, select, button {
+    width: 100%;
+    margin: 10px 0;
+    padding: 12px 15px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    font-size: 16px;
+    box-sizing: border-box;
+    transition: 0.3s;
+}
+
+/* Focus efekti */
+input:focus, textarea:focus, select:focus {
+    outline: none;
+    border-color: #4caf50;
+    box-shadow: 0 0 5px #4caf50;
+}
+
+/* Buton stili */
+button {
+    background: #4caf50;
+    color: white;
+    font-weight: bold;
+    cursor: pointer;
+    border: none;
+    transition: 0.3s;
+}
+
+button:hover {
+    background: #45a049;
+    transform: scale(1.03);
+}
+
+/* Sunucu kutusundaki sonuç */
+.result {
+    background: #f1f1f1;
+    padding: 15px;
+    border-radius: 8px;
+    min-height: 80px;
+    white-space: pre-wrap;
+    box-shadow: inset 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 10px;
+}
+
+/* Responsive */
+@media(max-width: 900px){
+    body {
+        flex-direction: column;
+        align-items: center;
+    }
+    .box {
+        width: 90%;
+        margin-bottom: 20px;
+    }
+}
+</style>
+</head>
+<body>
+
+<div class="box">
+<h2>İstemci</h2>
+<select id="cipher">
+<option value="caesar">Sezar</option>
+<option value="affine">Affine</option>
+<option value="substitution">Substitution</option>
+<option value="vigenere">Vigenere</option>
+</select>
+<input type="text" id="key" placeholder="Anahtar">
+<textarea id="text" rows="4" placeholder="Mesajınızı yazın"></textarea>
+<button onclick="encryptMessage()">Şifrele & Gönder</button>
+</div>
+
+<div class="box">
+<h2>Sunucu</h2>
+<div class="result" id="server"></div>
+<input type="text" id="key_decrypt" placeholder="Anahtarı girin ve çözmek için">
+<button onclick="decryptMessage()">Çöz</button>
+</div>
 
 <script>
-const API = 'http://127.0.0.1:5000/messages';
-const msgInput = document.getElementById('msg');
-const imgInput = document.getElementById('img');
-const audInput = document.getElementById('aud');
-const listDiv = document.getElementById('list');
+let lastCipher = "";
+let lastText = "";
 
-async function loadMessages() {
-  const res = await fetch(API);
-  const data = await res.json();
-  render(data);
-}
-
-async function sendMessage() {
-  const formData = new FormData();
-  formData.append('text', msgInput.value.trim());
-  if (imgInput.files[0]) formData.append('image', imgInput.files[0]);
-  if (audInput.files[0]) formData.append('audio', audInput.files[0]);
-
-  await fetch(API, { method: 'POST', body: formData });
-  msgInput.value = '';
-  imgInput.value = '';
-  audInput.value = '';
-  loadMessages();
-}
-
-function render(arr) {
-  if (!Array.isArray(arr) || arr.length === 0) {
-    listDiv.innerHTML = '<p>Henüz mesaj yok.</p>';
+async function encryptMessage(){
+    const cipher=document.getElementById("cipher").value;
+    const key=document.getElementById("key").value;
+    const text=document.getElementById("text").value;
+    const res = await fetch("http://127.0.0.1:5000/encrypt",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({cipher,text,key})
+    });
+    const data = await res.json();
+    if(data.error){
+    document.getElementById("server").innerText="Hata: " + data.error;
     return;
-  }
-  listDiv.innerHTML = arr.map((m, i) => {
-    let html = `<div class="item"><strong>#${i+1}</strong> ${m.text || ''}`;
-    if (m.image) html += `<br><img src="http://127.0.0.1:5000/uploads/${m.image}" style="max-width:200px;">`;
-    if (m.audio) html += `<br><audio controls src="http://127.0.0.1:5000/uploads/${m.audio}"></audio>`;
-    return html + '</div>';
-  }).join('');
+    }
+    lastCipher=cipher;
+    lastText=data.ciphertext;
+    document.getElementById("server").innerText="Şifreli Mesaj: "+data.ciphertext;
 }
 
-document.getElementById('send').addEventListener('click', sendMessage);
-document.getElementById('refresh').addEventListener('click', loadMessages);
+async function decryptMessage(){
+    const key=document.getElementById("key_decrypt").value;
+    const res = await fetch("http://127.0.0.1:5000/decrypt",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({cipher:lastCipher,key,text:lastText})
+    });
+    const data = await res.json();
+    if(data.plaintext) document.getElementById("server").innerText+="\nÇözülmüş Mesaj: "+data.plaintext;
+    else document.getElementById("server").innerText+="\nHata: "+data.error;
+}
 </script>
+
+</body>
+</html>
