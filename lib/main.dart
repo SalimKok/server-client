@@ -10,6 +10,7 @@ import 'ciphers/substitution.dart';
 import 'ciphers/columnar.dart';
 import 'ciphers/aes_cipher.dart';
 import 'ciphers/des_cipher.dart';
+import 'ciphers/rsa_cipher.dart';
 
 void main() {
   runApp(const MyApp());
@@ -23,20 +24,17 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Crypto Client',
-      // MATERIAL 3 TEMA AYARLARI
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.indigo, // Ana renk: Indigo mavisi
           brightness: Brightness.light,
         ),
-        // AppBar teması
         appBarTheme: const AppBarTheme(
           centerTitle: true,
           elevation: 2,
           titleTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
         ),
-        // Input (TextField) genel teması
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.grey.shade100,
@@ -64,7 +62,6 @@ class MyApp extends StatelessWidget {
             elevation: 3,
           ),
         ),
-        // cardTheme kısmını buradan kaldırdık, aşağıda manuel vereceğiz.
       ),
       home: const CryptoHome(),
     );
@@ -80,14 +77,14 @@ class CryptoHome extends StatefulWidget {
 
 class _CryptoHomeState extends State<CryptoHome> {
   final List<CipherBase> algorithms = [
+    AesCipherAlgo(),
+    DesCipherAlgo(),
     CaesarCipher(),
     VigenereCipher(),
     AffineCipher(),
     RailFenceCipher(),
     SubstitutionCipher(),
     ColumnarCipher(),
-    AesCipherAlgo(),
-    DesCipherAlgo(),
   ];
 
   CipherBase? selectedAlgorithm;
@@ -96,24 +93,48 @@ class _CryptoHomeState extends State<CryptoHome> {
 
   String encryptedText = "";
   String serverResponse = "";
-  // UI Durumları
   bool _isSending = false;
   bool _isSuccess = false;
+
+  final String baseUrl = "http://10.0.2.2:5000";
+  String? serverPublicKey;
 
   @override
   void initState() {
     super.initState();
     selectedAlgorithm = algorithms[0];
+    fetchPublicKey();
+  }
+
+  Future<void> fetchPublicKey() async {
+    try {
+      final response = await http.get(Uri.parse("$baseUrl/get_public_key"));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        setState(() {
+          serverPublicKey = data['public_key'];
+        });
+        print("Public Key Alındı:\n$serverPublicKey");
+      }
+    } catch (e) {
+      print("Public Key alınamadı: $e");
+      setState(() {
+        serverResponse = "Sunucuya bağlanılamadı. IP adresini kontrol et.";
+      });
+    }
   }
 
   void performEncryption() {
     if (selectedAlgorithm == null || msgController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen bir mesaj girin.")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen mesaj ve anahtar girin.")));
       return;
     }
     FocusScope.of(context).unfocus();
+
+    String result = selectedAlgorithm!.encrypt(msgController.text, keyController.text);
+
     setState(() {
-      encryptedText = selectedAlgorithm!.encrypt(msgController.text, keyController.text);
+      encryptedText = result;
       serverResponse = "";
       _isSuccess = false;
     });
@@ -121,40 +142,67 @@ class _CryptoHomeState extends State<CryptoHome> {
 
   Future<void> sendToServer() async {
     if (encryptedText.isEmpty) return;
-    FocusScope.of(context).unfocus();
 
-    const String apiUrl = "http://10.0.2.2:5000/decrypt";
+    bool needsHandshake = (selectedAlgorithm is AesCipherAlgo || selectedAlgorithm is DesCipherAlgo);
 
     setState(() {
       _isSending = true;
-      serverResponse = "Server yanıtı bekleniyor...\n(Lütfen Server terminaline anahtarı girin)";
-      _isSuccess = false;
+      serverResponse = "Sunucuyla haberleşiliyor...";
     });
 
     try {
-      final response = await http.post(
-        Uri.parse(apiUrl),
+      if (needsHandshake) {
+        await fetchPublicKey();
+
+        if (serverPublicKey == null) throw Exception("Sunucudan Public Key alınamadı!");
+
+        print("Güncel Public Key ile Handshake yapılıyor...");
+
+        String sessionKey = keyController.text;
+        String encryptedSessionKey = RsaCipher().encrypt(sessionKey, serverPublicKey!);
+
+        final handshakeResponse = await http.post(
+          Uri.parse("$baseUrl/handshake"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({
+            "encrypted_session_key": encryptedSessionKey,
+            "method": selectedAlgorithm!.id
+          }),
+        );
+
+        if (handshakeResponse.statusCode != 200) {
+          final errorJson = jsonDecode(handshakeResponse.body);
+          throw Exception("Handshake Hatası: ${errorJson['error']}");
+        }
+        print("Handshake Başarılı!");
+      }
+
+      final msgResponse = await http.post(
+        Uri.parse("$baseUrl/decrypt_message"),
         headers: {"Content-Type": "application/json"},
         body: jsonEncode({
-          "method": selectedAlgorithm!.id,
           "ciphertext": encryptedText,
+          "method": selectedAlgorithm!.id
         }),
       );
 
-      if (response.statusCode == 200) {
+      final responseData = jsonDecode(msgResponse.body);
+
+      if (msgResponse.statusCode == 200) {
         setState(() {
-          serverResponse = "BAŞARILI!\nServer mesajı çözdü ve konsola yazdı.";
+          serverResponse = "BAŞARILI!\nSunucu Çözdü: ${responseData['original_message']}";
           _isSuccess = true;
         });
       } else {
         setState(() {
-          serverResponse = "Hata: ${response.statusCode}\nServer isteği reddetti.";
+          serverResponse = "Hata: ${responseData['error']}";
           _isSuccess = false;
         });
       }
+
     } catch (e) {
       setState(() {
-        serverResponse = "Bağlantı Hatası:\n$e\n(Server'ın çalıştığından ve IP'nin doğru olduğundan emin olun)";
+        serverResponse = "Hata: $e";
         _isSuccess = false;
       });
     } finally {
@@ -163,7 +211,6 @@ class _CryptoHomeState extends State<CryptoHome> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -185,13 +232,10 @@ class _CryptoHomeState extends State<CryptoHome> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // --- BÖLÜM 1: GİRİŞLER ---
             Card(
-              // TEMA yerine buraya manuel yazdık:
               elevation: 4,
               color: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              // ------------------------------------
               child: Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -254,7 +298,6 @@ class _CryptoHomeState extends State<CryptoHome> {
 
             const SizedBox(height: 25),
 
-            // --- BÖLÜM 2: ÇIKTI VE GÖNDERİM ---
             if (encryptedText.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -262,11 +305,9 @@ class _CryptoHomeState extends State<CryptoHome> {
               ),
               const SizedBox(height: 8),
               Card(
-                // Şifreli metin kartı (Koyu Renk)
                 elevation: 4,
                 color: Colors.grey.shade800,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                // -----------------------------
                 child: Stack(
                   children: [
                     Padding(
@@ -313,12 +354,10 @@ class _CryptoHomeState extends State<CryptoHome> {
 
             const SizedBox(height: 25),
 
-            // --- BÖLÜM 3: SERVER YANITI ---
             if (serverResponse.isNotEmpty)
               FadeTransition(
                 opacity: const AlwaysStoppedAnimation(1),
                 child: Card(
-                  // Yanıt Kartı (Duruma göre renkli)
                   elevation: 4,
                   color: _isSuccess ? Colors.green.shade50 : Colors.orange.shade50,
                   shape: RoundedRectangleBorder(
@@ -328,7 +367,6 @@ class _CryptoHomeState extends State<CryptoHome> {
                           width: 1
                       )
                   ),
-                  // ------------------------------
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
                     child: Row(
