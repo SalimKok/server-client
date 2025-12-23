@@ -11,6 +11,11 @@ import 'ciphers/columnar.dart';
 import 'ciphers/aes_cipher.dart';
 import 'ciphers/des_cipher.dart';
 import 'ciphers/rsa_cipher.dart';
+import 'ciphers/hill.dart';
+import 'ciphers/playfair.dart';
+import 'ciphers/polybius.dart';
+import 'ciphers/vernam.dart';
+import 'ciphers/route.dart';
 
 void main() {
   runApp(const MyApp());
@@ -85,6 +90,11 @@ class _CryptoHomeState extends State<CryptoHome> {
     RailFenceCipher(),
     SubstitutionCipher(),
     ColumnarCipher(),
+    HillCipher(),
+    PlayfairCipher(),
+    PolybiusCipher(),
+    VernamCipher(),
+    RouteCipher()
   ];
 
   CipherBase? selectedAlgorithm;
@@ -190,7 +200,7 @@ class _CryptoHomeState extends State<CryptoHome> {
 
       if (msgResponse.statusCode == 200) {
         setState(() {
-          serverResponse = "BAŞARILI!\nSunucu Çözdü: ${responseData['original_message']}";
+          serverResponse = "BAŞARILI!\nSunucu Çözdü";
           _isSuccess = true;
         });
       } else {
