@@ -9,6 +9,11 @@ from strategies.columnar import ColumnarCipher
 from strategies.aes import AESCipher
 from strategies.des import DESCipher
 from strategies.rsa import RSACipher as RSAStrategy 
+from strategies.hill import HillCipher
+from strategies.playfair import PlayfairCipher
+from strategies.polybius import PolybiusCipher
+from strategies.vernam import VernamCipher
+from strategies.route import RouteCipher
 
 try:
     from strategies.rsa import RSACipher as RSATool
@@ -51,6 +56,11 @@ CIPHER_MAP = {
     'aes': AESCipher(),  
     'des': DESCipher(),
     'rsa': RSAStrategy(), 
+    'playfair' : PlayfairCipher(),
+    'polybius' : PolybiusCipher(),
+    'hill' : HillCipher(),
+    'vernam' : VernamCipher(),
+    'route' : RouteCipher(),
 }
 
 @app.route('/get_public_key', methods=['GET'])
