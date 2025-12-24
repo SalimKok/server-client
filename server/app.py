@@ -109,26 +109,22 @@ def decrypt_message():
     cipher_strategy = CIPHER_MAP.get(method)
     
     try:
-        start_time = time.perf_counter() # Performans ölçümü başlar
+        start_time = time.perf_counter() 
 
-        # 1. Anahtar Yönetimi
         if method in ['aes', 'des']:
             server_side_key = CURRENT_SESSION["symmetric_key"]
         else:
-            # Klasik algoritmalar için istemciden anahtarın gelmediği durumda manual input
             server_side_key = data.get('key') or input(f"{method} için anahtar girin: ")
 
-        # 2. Mesajı Deşifre Et (Gelen Mesaj)
         plaintext = cipher_strategy.decrypt(ciphertext, server_side_key)
-        
-        # 3. Şifreli Yanıt Hazırla (Sunucudan İstemciye)
+      
         print(f"\n[?] İstemciden gelen mesaj çözüldü: {plaintext}")
         response_text = input("İstemciye gönderilecek şifreli cevabı girin: ")
-        # Sunucu tarafında da şifreleme yapıyoruz (Çift Yönlü İletişim)
+
         if hasattr(cipher_strategy, 'encrypt'):
             server_encrypted_response = cipher_strategy.encrypt(response_text, server_side_key)
         else:
-            server_encrypted_response = response_text # Klasiklerde düz metin dönebilir
+            server_encrypted_response = response_text 
 
         end_time = time.perf_counter()
         process_ms = (end_time - start_time) * 1000
@@ -140,7 +136,7 @@ def decrypt_message():
         return jsonify({
             "success": True,
             "method": method,
-            "server_response": server_encrypted_response, # İstemcinin çözeceği şifreli yanıt
+            "server_response": server_encrypted_response, 
             "server_duration_ms": process_ms
         })
 
@@ -159,17 +155,13 @@ def encrypt_file():
         cipher_strategy = CIPHER_MAP.get(method)
         server_side_key = CURRENT_SESSION.get("symmetric_key")
 
-        # 1. Deşifreleme (Manuel fonksiyon Base64 string döner)
         decrypted_payload = cipher_strategy.decrypt(ciphertext, server_side_key)
         
-        # 2. Base64'ten Byte'a Dönüştürme (Hata Kontrolü ile)
         try:
-            # strip() ile olası boşlukları temizliyoruz
             file_bytes = base64.b64decode(decrypted_payload.strip())
         except Exception as b64e:
             return jsonify({"success": False, "error": f"Base64 hatası: {str(b64e)}"}), 400
 
-        # 3. Klasör Kontrolü ve Kayıt
         upload_dir = "uploads"
         if not os.path.exists(upload_dir):
             os.makedirs(upload_dir)
