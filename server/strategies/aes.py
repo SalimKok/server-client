@@ -1,26 +1,8 @@
 import base64
+import os
 from .cipher_interface import CipherInterface
 
-# --- AES SABİTLERİ (S-Box ve Dönüşüm Tabloları) ---
-S_BOX_INV = [
-    0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
-    0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
-    0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
-    0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
-    0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
-    0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
-    0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
-    0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
-    0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
-    0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
-    0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
-    0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
-    0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
-    0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
-    0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
-    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d,
-]
-
+# --- Sabit Tablolar ---
 S_BOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -40,6 +22,25 @@ S_BOX = [
     0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 ]
 
+S_BOX_INV = [
+    0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
+    0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
+    0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
+    0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25,
+    0x72, 0xf8, 0xf6, 0x64, 0x86, 0x68, 0x98, 0x16, 0xd4, 0xa4, 0x5c, 0xcc, 0x5d, 0x65, 0xb6, 0x92,
+    0x6c, 0x70, 0x48, 0x50, 0xfd, 0xed, 0xb9, 0xda, 0x5e, 0x15, 0x46, 0x57, 0xa7, 0x8d, 0x9d, 0x84,
+    0x90, 0xd8, 0xab, 0x00, 0x8c, 0xbc, 0xd3, 0x0a, 0xf7, 0xe4, 0x58, 0x05, 0xb8, 0xb3, 0x45, 0x06,
+    0xd0, 0x2c, 0x1e, 0x8f, 0xca, 0x3f, 0x0f, 0x02, 0xc1, 0xaf, 0xbd, 0x03, 0x01, 0x13, 0x8a, 0x6b,
+    0x3a, 0x91, 0x11, 0x41, 0x4f, 0x67, 0xdc, 0xea, 0x97, 0xf2, 0xcf, 0xce, 0xf0, 0xb4, 0xe6, 0x73,
+    0x96, 0xac, 0x74, 0x22, 0xe7, 0xad, 0x35, 0x85, 0xe2, 0xf9, 0x37, 0xe8, 0x1c, 0x75, 0xdf, 0x6e,
+    0x47, 0xf1, 0x1a, 0x71, 0x1d, 0x29, 0xc5, 0x89, 0x6f, 0xb7, 0x62, 0x0e, 0xaa, 0x18, 0xbe, 0x1b,
+    0xfc, 0x56, 0x3e, 0x4b, 0xc6, 0xd2, 0x79, 0x20, 0x9a, 0xdb, 0xc0, 0xfe, 0x78, 0xcd, 0x5a, 0xf4,
+    0x1f, 0xdd, 0xa8, 0x33, 0x88, 0x07, 0xc7, 0x31, 0xb1, 0x12, 0x10, 0x59, 0x27, 0x80, 0xec, 0x5f,
+    0x60, 0x51, 0x7f, 0xa9, 0x19, 0xb5, 0x4a, 0x0d, 0x2d, 0xe5, 0x7a, 0x9f, 0x93, 0xc9, 0x9c, 0xef,
+    0xa0, 0xe0, 0x3b, 0x4d, 0xae, 0x2a, 0xf5, 0xb0, 0xc8, 0xeb, 0xbb, 0x3c, 0x83, 0x53, 0x99, 0x61,
+    0x17, 0x2b, 0x04, 0x7e, 0xba, 0x77, 0xd6, 0x26, 0xe1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0c, 0x7d,
+]
+
 R_CON = [
     0x00, 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40,
     0x80, 0x1b, 0x36, 0x6c, 0xd8, 0xab, 0x4d, 0x9a,
@@ -49,10 +50,11 @@ R_CON = [
 
 class AESCipher(CipherInterface):
     def __init__(self):
-        self.nb = 4  # Blok boyutu (word)
-        self.nk = 4  # Anahtar uzunluğu (word) - AES-128 için varsayılan
-        self.nr = 10 # Tur sayısı - AES-128 için varsayılan
+        self.nb = 4  # Blok sayısı (kelime cinsinden)
+        self.nk = 4  # Anahtar uzunluğu (kelime cinsinden)
+        self.nr = 10 # Tur sayısı
 
+    # --- Yardımcı Fonksiyonlar ---
     def _sub_word(self, word):
         return [S_BOX[b] for b in word]
 
@@ -77,7 +79,6 @@ class AESCipher(CipherInterface):
                 temp = self._sub_word(temp)
             
             w.append([a ^ b for a, b in zip(w[i-self.nk], temp)])
-            
         return w
 
     def _add_round_key(self, state, w, round_num):
@@ -96,6 +97,41 @@ class AESCipher(CipherInterface):
             b >>= 1
         return p & 0xFF
 
+    # --- Manuel Şifreleme Adımları ---
+    def _sub_bytes(self, state):
+        for r in range(4):
+            for c in range(4):
+                state[r][c] = S_BOX[state[r][c]]
+        return state
+
+    def _shift_rows(self, state):
+        state[1] = state[1][1:] + state[1][:1]
+        state[2] = state[2][2:] + state[2][:2]
+        state[3] = state[3][3:] + state[3][:3]
+        return state
+
+    def _mix_columns(self, state):
+        for i in range(4):
+            c = [state[x][i] for x in range(4)]
+            state[0][i] = self._gmul(c[0], 0x02) ^ self._gmul(c[1], 0x03) ^ c[2] ^ c[3]
+            state[1][i] = c[0] ^ self._gmul(c[1], 0x02) ^ self._gmul(c[2], 0x03) ^ c[3]
+            state[2][i] = c[0] ^ c[1] ^ self._gmul(c[2], 0x02) ^ self._gmul(c[3], 0x03)
+            state[3][i] = self._gmul(c[0], 0x03) ^ c[1] ^ c[2] ^ self._gmul(c[3], 0x02)
+        return state
+
+    # --- Manuel Deşifreleme Adımları ---
+    def _inv_sub_bytes(self, state):
+        for r in range(4):
+            for c in range(4):
+                state[r][c] = S_BOX_INV[state[r][c]]
+        return state
+
+    def _inv_shift_rows(self, state):
+        state[1] = state[1][3:] + state[1][:3]
+        state[2] = state[2][2:] + state[2][:2]
+        state[3] = state[3][1:] + state[3][:1]
+        return state
+
     def _inv_mix_columns(self, state):
         for i in range(4):
             c = [state[x][i] for x in range(4)]
@@ -105,26 +141,34 @@ class AESCipher(CipherInterface):
             state[3][i] = self._gmul(c[0], 0x0b) ^ self._gmul(c[1], 0x0d) ^ self._gmul(c[2], 0x09) ^ self._gmul(c[3], 0x0e)
         return state
 
-    def _inv_shift_rows(self, state):
-        state[1] = state[1][3:] + state[1][:3]
-        state[2] = state[2][2:] + state[2][:2]
-        state[3] = state[3][1:] + state[3][:1]
-        return state
-
-    def _inv_sub_bytes(self, state):
+    # --- Blok İşlemleri ---
+    def _encrypt_block(self, plaintext_block, w):
+        state = [[0]*4 for _ in range(4)]
         for r in range(4):
-            for c in range(4):
-                state[r][c] = S_BOX_INV[state[r][c]]
-        return state
+            for c in range(4): state[r][c] = plaintext_block[r + 4*c]
+
+        state = self._add_round_key(state, w, 0)
+        for round_num in range(1, self.nr):
+            state = self._sub_bytes(state)
+            state = self._shift_rows(state)
+            state = self._mix_columns(state)
+            state = self._add_round_key(state, w, round_num)
+
+        state = self._sub_bytes(state)
+        state = self._shift_rows(state)
+        state = self._add_round_key(state, w, self.nr)
+
+        output = []
+        for c in range(4):
+            for r in range(4): output.append(state[r][c])
+        return output
 
     def _decrypt_block(self, ciphertext_block, w):
         state = [[0]*4 for _ in range(4)]
         for r in range(4):
-            for c in range(4):
-                state[r][c] = ciphertext_block[r + 4*c]
+            for c in range(4): state[r][c] = ciphertext_block[r + 4*c]
 
         state = self._add_round_key(state, w, self.nr)
-
         for round_num in range(self.nr - 1, 0, -1):
             state = self._inv_shift_rows(state)
             state = self._inv_sub_bytes(state)
@@ -137,82 +181,88 @@ class AESCipher(CipherInterface):
 
         output = []
         for c in range(4):
-            for r in range(4):
-                output.append(state[r][c])
+            for r in range(4): output.append(state[r][c])
         return output
 
+    # --- Padding (PKCS7) ---
+    def _pkcs7_pad(self, data):
+        pad_len = 16 - (len(data) % 16)
+        return data + bytes([pad_len] * pad_len)
+
     def _pkcs7_unpad(self, data):
-        padding_len = data[-1]
-        if padding_len < 1 or padding_len > 16:
-            return data
-        return data[:-padding_len]
+        pad_len = data[-1]
+        return data[:-pad_len]
+
+    # --- ANA METOTLAR (MANUEL CBC) ---
+    def encrypt(self, text: str, key: str) -> str:
+        """Kütüphanesiz Manuel AES-256-CBC Şifreleme"""
+        try:
+            key_bytes = key.encode('utf-8').ljust(32, b' ')[:32]
+            self.nk, self.nr = 8, 14 # AES-256 ayarları
+            w = self._key_expansion(key_bytes)
+
+            iv = os.urandom(16)
+            plaintext = self._pkcs7_pad(text.encode('utf-8'))
+            
+            ciphertext = bytearray()
+            prev_block = list(iv)
+
+            for i in range(0, len(plaintext), 16):
+                block = list(plaintext[i:i+16])
+                # CBC XOR işlemi
+                xor_block = [b ^ p for b, p in zip(block, prev_block)]
+                encrypted_block = self._encrypt_block(xor_block, w)
+                ciphertext.extend(encrypted_block)
+                prev_block = encrypted_block
+
+            return base64.b64encode(iv + ciphertext).decode('utf-8')
+        except Exception as e:
+            return f"Manuel AES Encrypt Hatası: {str(e)}"
 
     def decrypt(self, text: str, key: str) -> str:
+        """Kütüphanesiz Manuel AES-256-CBC Deşifreleme"""
         try:
-            # Anahtar Hazırlığı (AES-128/192/256)
-            key_bytes = key.encode('utf-8')
-            while len(key_bytes) < 32: key_bytes += b' '
-            key_bytes = key_bytes[:32]
-            
-            # Anahtar uzunluğuna göre tur sayısını ayarla
-            if len(key_bytes) == 16: self.nk, self.nr = 4, 10
-            elif len(key_bytes) == 24: self.nk, self.nr = 6, 12
-            else: self.nk, self.nr = 8, 14
-
+            key_bytes = key.encode('utf-8').ljust(32, b' ')[:32]
+            self.nk, self.nr = 8, 14
             w = self._key_expansion(key_bytes)
 
             raw_data = base64.b64decode(text)
             iv = list(raw_data[:16])
             ciphertext = list(raw_data[16:])
             
-            decrypted_bytes = []
+            decrypted_bytes = bytearray()
             prev_block = iv
-            
-            # CBC Modu (Manuel)
+
             for i in range(0, len(ciphertext), 16):
                 block = ciphertext[i:i+16]
-                if len(block) < 16: break
-                
                 decrypted_block = self._decrypt_block(block, w)
-                
-                # XOR with IV (or previous ciphertext block)
-                for j in range(16):
-                    decrypted_block[j] ^= prev_block[j]
-                
-                decrypted_bytes.extend(decrypted_block)
+                # CBC XOR işlemi
+                plain_block = [d ^ p for d, p in zip(decrypted_block, prev_block)]
+                decrypted_bytes.extend(plain_block)
                 prev_block = block
 
-            return bytes(self._pkcs7_unpad(decrypted_bytes)).decode('utf-8')
-
+            return self._pkcs7_unpad(decrypted_bytes).decode('utf-8')
         except Exception as e:
-            return f"AES Hatası: {str(e)}"
-        
+            return f"Manuel AES Decrypt Hatası: {str(e)}"
+
+# --- KÜTÜPHANE KULLANILAN VERSİYON  ---
 '''
 import base64
 from Crypto.Cipher import AES
-from Crypto.Util.Padding import unpad
-from .cipher_interface import CipherInterface
+from Crypto.Util.Padding import pad, unpad
 
 class AESCipher(CipherInterface):
+    def encrypt(self, text: str, key: str) -> str:
+        key_bytes = key.encode('utf-8').ljust(32, b' ')[:32]
+        cipher = AES.new(key_bytes, AES.MODE_CBC)
+        ct_bytes = cipher.encrypt(pad(text.encode('utf-8'), AES.block_size))
+        return base64.b64encode(cipher.iv + ct_bytes).decode('utf-8')
+
     def decrypt(self, text: str, key: str) -> str:
-        try:
-            key_bytes = key.encode('utf-8')
-
-            while len(key_bytes) < 32:
-                key_bytes += b' '
-
-            if len(key_bytes) > 32:
-                key_bytes = key_bytes[:32]
-
-            raw_data = base64.b64decode(text)
-
-            iv = raw_data[:16]
-            ciphertext = raw_data[16:]
-
-            cipher = AES.new(key_bytes, AES.MODE_CBC, iv)
-            plaintext = unpad(cipher.decrypt(ciphertext), AES.block_size)
-            
-            return plaintext.decode('utf-8')
-        except Exception as e:
-            return f"Hata: Şifre çözülemedi. ({str(e)})"  
+        raw_data = base64.b64decode(text)
+        iv = raw_data[:16]
+        ct = raw_data[16:]
+        key_bytes = key.encode('utf-8').ljust(32, b' ')[:32]
+        cipher = AES.new(key_bytes, AES.MODE_CBC, iv)
+        return unpad(cipher.decrypt(ct), AES.block_size).decode('utf-8')
 '''
