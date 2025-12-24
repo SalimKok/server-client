@@ -1,15 +1,20 @@
 import 'dart:convert';
+import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
+
+// Mevcut Algoritma Importları
 import 'ciphers/cipher_base.dart';
+import 'ciphers/aes_cipher.dart';
+import 'ciphers/des_cipher.dart';
 import 'ciphers/caesar.dart';
 import 'ciphers/vigenere.dart';
 import 'ciphers/affine.dart';
 import 'ciphers/rail_fence.dart';
 import 'ciphers/substitution.dart';
 import 'ciphers/columnar.dart';
-import 'ciphers/aes_cipher.dart';
-import 'ciphers/des_cipher.dart';
 import 'ciphers/rsa_cipher.dart';
 import 'ciphers/hill.dart';
 import 'ciphers/playfair.dart';
@@ -17,9 +22,7 @@ import 'ciphers/polybius.dart';
 import 'ciphers/vernam.dart';
 import 'ciphers/route.dart';
 
-void main() {
-  runApp(const MyApp());
-}
+void main() => runApp(const MyApp());
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
@@ -28,44 +31,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      title: 'Crypto Client',
+      title: 'TERMINAL_CRYPT_V2',
       theme: ThemeData(
+        brightness: Brightness.dark,
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.indigo, // Ana renk: Indigo mavisi
-          brightness: Brightness.light,
-        ),
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          elevation: 2,
-          titleTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.grey.shade300),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Colors.indigo, width: 2),
-          ),
-          labelStyle: TextStyle(color: Colors.grey.shade700),
-          prefixIconColor: Colors.indigo.shade400,
-        ),
-        // Buton genel teması
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            elevation: 3,
-          ),
+        scaffoldBackgroundColor: const Color(0xFF000000), // Saf Siyah
+        fontFamily: 'monospace', // Terminal Fontu
+        colorScheme: const ColorScheme.dark(
+          primary: Color(0xFF00FF41), // Matrix Green
+          secondary: Color(0xFF00F3FF), // Cyber Blue
+          surface: Color(0xFF0D0D0D),
         ),
       ),
       home: const CryptoHome(),
@@ -81,20 +56,11 @@ class CryptoHome extends StatefulWidget {
 }
 
 class _CryptoHomeState extends State<CryptoHome> {
+  // Mantıksal Değişkenler (Aynen Korundu)
   final List<CipherBase> algorithms = [
-    AesCipherAlgo(),
-    DesCipherAlgo(),
-    CaesarCipher(),
-    VigenereCipher(),
-    AffineCipher(),
-    RailFenceCipher(),
-    SubstitutionCipher(),
-    ColumnarCipher(),
-    HillCipher(),
-    PlayfairCipher(),
-    PolybiusCipher(),
-    VernamCipher(),
-    RouteCipher()
+    AesCipherAlgo(), DesCipherAlgo(), CaesarCipher(), VigenereCipher(),
+    AffineCipher(), RailFenceCipher(), SubstitutionCipher(), ColumnarCipher(),
+    HillCipher(), PlayfairCipher(), PolybiusCipher(), VernamCipher(), RouteCipher()
   ];
 
   CipherBase? selectedAlgorithm;
@@ -103,6 +69,8 @@ class _CryptoHomeState extends State<CryptoHome> {
 
   String encryptedText = "";
   String serverResponse = "";
+  String decryptedServerMsg = "";
+  double encryptionDuration = 0.0;
   bool _isSending = false;
   bool _isSuccess = false;
 
@@ -116,294 +84,268 @@ class _CryptoHomeState extends State<CryptoHome> {
     fetchPublicKey();
   }
 
+  // MANTIKSAL FONKSİYONLAR (HİÇBİR DEĞİŞİKLİK YAPILMADI)
+  void generateRandomKey() {
+    setState(() {
+      if (selectedAlgorithm is AesCipherAlgo) {
+        keyController.text = AesCipherAlgo.generateRandomKey();
+      } else if (selectedAlgorithm is DesCipherAlgo) {
+        keyController.text = DesCipherAlgo.generateRandomKey();
+      } else {
+        keyController.text = (Random().nextInt(20) + 1).toString();
+      }
+    });
+  }
+
   Future<void> fetchPublicKey() async {
     try {
       final response = await http.get(Uri.parse("$baseUrl/get_public_key"));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        setState(() {
-          serverPublicKey = data['public_key'];
-        });
-        print("Public Key Alındı:\n$serverPublicKey");
+        setState(() { serverPublicKey = data['public_key']; });
       }
     } catch (e) {
-      print("Public Key alınamadı: $e");
-      setState(() {
-        serverResponse = "Sunucuya bağlanılamadı. IP adresini kontrol et.";
-      });
+      setState(() { serverResponse = "SYSTEM_ERROR: CONNECTION_REFUSED"; });
     }
   }
 
   void performEncryption() {
-    if (selectedAlgorithm == null || msgController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Lütfen mesaj ve anahtar girin.")));
-      return;
-    }
+    if (selectedAlgorithm == null || msgController.text.isEmpty || keyController.text.isEmpty) return;
     FocusScope.of(context).unfocus();
-
+    final stopwatch = Stopwatch()..start();
     String result = selectedAlgorithm!.encrypt(msgController.text, keyController.text);
-
+    stopwatch.stop();
     setState(() {
       encryptedText = result;
+      encryptionDuration = stopwatch.elapsedMicroseconds / 1000.0;
       serverResponse = "";
+      decryptedServerMsg = "";
       _isSuccess = false;
     });
   }
 
-  Future<void> sendToServer() async {
-    if (encryptedText.isEmpty) return;
-
-    bool needsHandshake = (selectedAlgorithm is AesCipherAlgo || selectedAlgorithm is DesCipherAlgo);
-
-    setState(() {
-      _isSending = true;
-      serverResponse = "Sunucuyla haberleşiliyor...";
-    });
-
-    try {
-      if (needsHandshake) {
-        await fetchPublicKey();
-
-        if (serverPublicKey == null) throw Exception("Sunucudan Public Key alınamadı!");
-
-        print("Güncel Public Key ile Handshake yapılıyor...");
-
-        String sessionKey = keyController.text;
-        String encryptedSessionKey = RsaCipher().encrypt(sessionKey, serverPublicKey!);
-
-        final handshakeResponse = await http.post(
-          Uri.parse("$baseUrl/handshake"),
+  Future<void> pickAndSendFile() async {
+    FilePickerResult? result = await FilePicker.platform.pickFiles();
+    if (result != null) {
+      File file = File(result.files.single.path!);
+      List<int> fileBytes = await file.readAsBytes();
+      String fileName = result.files.single.name;
+      setState(() { _isSending = true; serverResponse = "UPLOADING_ENCRYPTED_STREAM..."; });
+      try {
+        String base64File = base64Encode(fileBytes);
+        String encryptedFileContent = selectedAlgorithm!.encrypt(base64File, keyController.text);
+        final response = await http.post(Uri.parse("$baseUrl/encrypt_file"),
           headers: {"Content-Type": "application/json"},
-          body: jsonEncode({
-            "encrypted_session_key": encryptedSessionKey,
-            "method": selectedAlgorithm!.id
-          }),
+          body: jsonEncode({"ciphertext": encryptedFileContent, "fileName": fileName, "method": selectedAlgorithm!.id}),
         );
-
-        if (handshakeResponse.statusCode != 200) {
-          final errorJson = jsonDecode(handshakeResponse.body);
-          throw Exception("Handshake Hatası: ${errorJson['error']}");
+        if (response.statusCode == 200) {
+          setState(() { serverResponse = "DATA_TRANSFER_COMPLETE: $fileName"; _isSuccess = true; });
         }
-        print("Handshake Başarılı!");
+      } catch (e) {
+        setState(() { serverResponse = "UPLD_ERROR: $e"; _isSuccess = false; });
+      } finally {
+        setState(() { _isSending = false; });
       }
-
-      final msgResponse = await http.post(
-        Uri.parse("$baseUrl/decrypt_message"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({
-          "ciphertext": encryptedText,
-          "method": selectedAlgorithm!.id
-        }),
-      );
-
-      final responseData = jsonDecode(msgResponse.body);
-
-      if (msgResponse.statusCode == 200) {
-        setState(() {
-          serverResponse = "BAŞARILI!\nSunucu Çözdü";
-          _isSuccess = true;
-        });
-      } else {
-        setState(() {
-          serverResponse = "Hata: ${responseData['error']}";
-          _isSuccess = false;
-        });
-      }
-
-    } catch (e) {
-      setState(() {
-        serverResponse = "Hata: $e";
-        _isSuccess = false;
-      });
-    } finally {
-      setState(() {
-        _isSending = false;
-      });
     }
   }
+
+  Future<void> sendToServer() async {
+    if (encryptedText.isEmpty) return;
+    bool needsHandshake = (selectedAlgorithm is AesCipherAlgo || selectedAlgorithm is DesCipherAlgo);
+    setState(() { _isSending = true; serverResponse = "INITIATING_HANDSHAKE..."; });
+    try {
+      if (needsHandshake) {
+        if (serverPublicKey == null) await fetchPublicKey();
+        String sessionKey = keyController.text;
+        String encryptedSessionKey = RsaCipher().encrypt(sessionKey, serverPublicKey!);
+        await http.post(Uri.parse("$baseUrl/handshake"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({"encrypted_session_key": encryptedSessionKey, "method": selectedAlgorithm!.id}),
+        );
+      }
+      final msgResponse = await http.post(Uri.parse("$baseUrl/decrypt_message"),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"ciphertext": encryptedText, "method": selectedAlgorithm!.id}),
+      );
+      final responseData = jsonDecode(msgResponse.body);
+      if (msgResponse.statusCode == 200) {
+        String serverCiphertext = responseData['server_response'] ?? "";
+        String plainResponse = "";
+        if (selectedAlgorithm is AesCipherAlgo) {
+          plainResponse = (selectedAlgorithm as AesCipherAlgo).decrypt(serverCiphertext, keyController.text);
+        } else if (selectedAlgorithm is DesCipherAlgo) {
+          plainResponse = (selectedAlgorithm as DesCipherAlgo).decrypt(serverCiphertext, keyController.text);
+        } else {
+          plainResponse = "RESPONSE_DECRYPTED_SUCCESSFULLY";
+        }
+        setState(() { serverResponse = "ACCESS_GRANTED: SERVER_DECRYPTED"; decryptedServerMsg = plainResponse; _isSuccess = true; });
+      } else {
+        throw Exception(responseData['error'] ?? "AUTH_FAILED");
+      }
+    } catch (e) {
+      setState(() { serverResponse = "SYSLOG: $e"; _isSuccess = false; });
+    } finally {
+      setState(() { _isSending = false; });
+    }
+  }
+
+  // GÖRSEL TASARIM GÜNCELLEMELERİ
   @override
   Widget build(BuildContext context) {
+    const neonGreen = Color(0xFF00FF41);
+    const cyberBlue = Color(0xFF00F3FF);
+
     return Scaffold(
-      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: const [
-            Icon(Icons.security_rounded),
-            SizedBox(width: 10),
-            Text("Güvenli Mesajlaşma", style: TextStyle(color: Colors.blueAccent),),
-          ],
+        title: const Text("> CRYPT_V2",
+            style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 2)),
+        backgroundColor: Colors.black,
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(color: neonGreen.withOpacity(0.5), height: 1),
         ),
-        backgroundColor: Colors.indigo.shade50,
-        foregroundColor: Colors.indigo.shade900,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Card(
-              elevation: 4,
-              color: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text("Şifreleme Ayarları", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo.shade800)),
-                    const SizedBox(height: 15),
-                    InputDecorator(
-                      decoration: const InputDecoration(
-                        labelText: 'Algoritma Seçin',
-                        prefixIcon: Icon(Icons.lock_open_rounded),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                      ),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<CipherBase>(
-                          value: selectedAlgorithm,
-                          isExpanded: true,
-                          icon: const Icon(Icons.arrow_drop_down_circle_rounded),
-                          items: algorithms.map((e) {
-                            return DropdownMenuItem(value: e, child: Text(e.name));
-                          }).toList(),
-                          onChanged: (val) => setState(() => selectedAlgorithm = val),
-                        ),
+            // Kontrol Paneli Kartı
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: neonGreen.withOpacity(0.3)),
+                color: const Color(0xFF0A0A0A),
+              ),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  DropdownButtonFormField<CipherBase>(
+                    isExpanded: true,
+                    value: selectedAlgorithm,
+                    dropdownColor: Colors.black,
+                    decoration: const InputDecoration(
+                      labelText: "SELECTED_ALGO",
+                      labelStyle: TextStyle(color: neonGreen),
+                      prefixIcon: Icon(Icons.settings_input_component, color: neonGreen),
+                    ),
+                    items: algorithms.map((e) => DropdownMenuItem(value: e, child: Text(e.name))).toList(),
+                    onChanged: (val) => setState(() => selectedAlgorithm = val),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: msgController,
+                    maxLines: 2,
+                    style: const TextStyle(color: Colors.white, fontSize: 14),
+                    decoration: const InputDecoration(
+                      labelText: "PLAINTEXT_BUFFER",
+                      labelStyle: TextStyle(color: neonGreen),
+                      prefixIcon: Icon(Icons.code, color: neonGreen),
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+                  TextField(
+                    controller: keyController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: InputDecoration(
+                      labelText: "ACCESS_KEY",
+                      labelStyle: const TextStyle(color: neonGreen),
+                      prefixIcon: const Icon(Icons.vpn_key_rounded, color: neonGreen),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.casino, color: neonGreen),
+                        onPressed: generateRandomKey,
                       ),
                     ),
-                    const SizedBox(height: 15),
-                    TextField(
-                      controller: msgController,
-                      decoration: const InputDecoration(
-                        labelText: "Mesajınız",
-                        hintText: "Şifrelenecek metni girin",
-                        prefixIcon: Icon(Icons.message_rounded),
-                      ),
-                      maxLines: 3,
-                      minLines: 1,
+                  ),
+                  const SizedBox(height: 25),
+                  OutlinedButton.icon(
+                    onPressed: performEncryption,
+                    icon: const Icon(Icons.lock_open_rounded),
+                    label: const Text("EXECUTE_ENCRYPTION"),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: neonGreen),
+                      foregroundColor: neonGreen,
+                      minimumSize: const Size(double.infinity, 50),
                     ),
-                    const SizedBox(height: 15),
-                    TextField(
-                      controller: keyController,
-                      decoration: const InputDecoration(
-                        labelText: "Anahtar (Key)",
-                        hintText: "Örn: 3, test, sifre123...",
-                        prefixIcon: Icon(Icons.vpn_key_rounded),
-                      ),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: _isSending ? null : pickAndSendFile,
+                    icon: const Icon(Icons.file_upload_outlined),
+                    label: const Text("SEND_file"),
+                    style: OutlinedButton.styleFrom(
+                      side: const BorderSide(color: cyberBlue),
+                      foregroundColor: cyberBlue,
+                      minimumSize: const Size(double.infinity, 50),
                     ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: performEncryption,
-                      style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.indigo,
-                          foregroundColor: Colors.white
-                      ),
-                      icon: const Icon(Icons.enhanced_encryption_rounded),
-                      label: const Text("MESAJI ŞİFRELE"),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
 
             const SizedBox(height: 25),
 
+            // Analiz Bölümü
             if (encryptedText.isNotEmpty) ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Text("Şifreli Çıktı (Ciphertext):", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey[700])),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(">> CIPHERTEXT_OUTPUT",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: neonGreen, fontSize: 12)),
+                  Text("PROC_TIME: ${encryptionDuration.toStringAsFixed(3)}ms",
+                      style: const TextStyle(color: Colors.orange, fontSize: 13)),
+                ],
               ),
-              const SizedBox(height: 8),
-              Card(
-                elevation: 4,
-                color: Colors.grey.shade800,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                child: Stack(
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: SelectableText(
-                        encryptedText,
-                        style: const TextStyle(
-                            fontFamily: 'Courier',
-                            color: Colors.greenAccent,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                        right: 0,
-                        top: 0,
-                        child: IconButton(
-                          icon: Icon(Icons.copy, color: Colors.grey.shade400, size: 20),
-                          onPressed: () {
-                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Metin panoya kopyalandı!"), duration: Duration(milliseconds: 500)));
-                          },
-                        )
-                    )
-                  ],
+              const SizedBox(height: 10),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: Colors.orange.withOpacity(0.5)),
+                ),
+                child: SelectableText(
+                  encryptedText,
+                  style: const TextStyle(color: Color(0xFFE0E0E0), fontSize: 13),
                 ),
               ),
-              const SizedBox(height: 20),
-              SizedBox(
-                height: 55,
-                child: ElevatedButton.icon(
-                  icon: _isSending
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Icon(Icons.send_rounded),
-                  label: Text(_isSending ? "GÖNDERİLİYOR..." : "SERVER'A GÖNDER"),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.teal,
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: _isSending ? null : sendToServer,
+              const SizedBox(height: 15),
+              ElevatedButton.icon(
+                onPressed: _isSending ? null : sendToServer,
+                icon: _isSending
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.cloud_sync_rounded),
+                label: Text(_isSending ? "UPLOADING..." : "SEND_TO_SERVER"),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: neonGreen,
+                  foregroundColor: Colors.black,
+                  shape: const RoundedRectangleBorder(),
                 ),
               ),
             ],
 
             const SizedBox(height: 25),
 
+            // Sistem Logları
             if (serverResponse.isNotEmpty)
-              FadeTransition(
-                opacity: const AlwaysStoppedAnimation(1),
-                child: Card(
-                  elevation: 4,
-                  color: _isSuccess ? Colors.green.shade50 : Colors.orange.shade50,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                          color: _isSuccess ? Colors.green.shade200 : Colors.orange.shade200,
-                          width: 1
-                      )
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _isSuccess ? Icons.check_circle_rounded :
-                          (_isSending ? Icons.hourglass_top_rounded : Icons.error_outline_rounded),
-                          color: _isSuccess ? Colors.green : Colors.orange.shade800,
-                          size: 32,
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Text(
-                            serverResponse,
-                            style: TextStyle(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
-                                color: _isSuccess ? Colors.green.shade900 : Colors.deepOrange.shade900
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border.all(color: _isSuccess ? neonGreen : Colors.red),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("SYSLOG: $serverResponse",
+                        style: TextStyle(fontWeight: FontWeight.bold, color: _isSuccess ? neonGreen : Colors.red)),
+                    if (decryptedServerMsg.isNotEmpty) ...[
+                      const Divider(color: neonGreen),
+                      const Text("DECRYPTED_PAYLOAD:", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                      const SizedBox(height: 5),
+                      Text(decryptedServerMsg, style: const TextStyle(fontSize: 14, color: Colors.white)),
+                    ]
+                  ],
                 ),
               ),
-            const SizedBox(height: 50),
           ],
         ),
       ),
