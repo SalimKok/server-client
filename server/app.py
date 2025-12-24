@@ -1,3 +1,6 @@
+import os
+import base64
+import time
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from strategies.caesar import CaesarCipher
@@ -97,45 +100,90 @@ def handshake():
 @app.route('/decrypt_message', methods=['POST'])
 def decrypt_message():
     data = request.json
-    
     method = data.get('method')
     ciphertext = data.get('ciphertext')
 
     if not all([method, ciphertext]):
-        return jsonify({"error": "Eksik veri gönderildi."}), 400
+        return jsonify({"error": "Eksik veri"}), 400
     
     cipher_strategy = CIPHER_MAP.get(method)
     
-    if not cipher_strategy:
-        return jsonify({"error": "Geçersiz şifreleme yöntemi."}), 400
-        
     try:
-        print(f"\n[!] YENİ MESAJ GELDİ ({method})")
-        print(f"[!] Şifreli Metin: {ciphertext}")
-        
-        server_side_key = None
+        start_time = time.perf_counter() # Performans ölçümü başlar
 
+        # 1. Anahtar Yönetimi
         if method in ['aes', 'des']:
             server_side_key = CURRENT_SESSION["symmetric_key"]
-            if not server_side_key:
-                return jsonify({"error": "AES/DES için önce /handshake yapılmalı!"}), 400
-            print(f"[otomatik] RSA Handshake ile alınan anahtar kullanılıyor: {server_side_key}")
-
         else:
-            print("[?] Mesajı çözmek için anahtarı girin (Server Konsolu):")
-            server_side_key = input("Anahtar: ") 
+            # Klasik algoritmalar için istemciden anahtarın gelmediği durumda manual input
+            server_side_key = data.get('key') or input(f"{method} için anahtar girin: ")
 
+        # 2. Mesajı Deşifre Et (Gelen Mesaj)
         plaintext = cipher_strategy.decrypt(ciphertext, server_side_key)
         
-        print(f"✅️ Mesaj çözüldü: {plaintext}\n")
+        # 3. Şifreli Yanıt Hazırla (Sunucudan İstemciye)
+        print(f"\n[?] İstemciden gelen mesaj çözüldü: {plaintext}")
+        response_text = input("İstemciye gönderilecek şifreli cevabı girin: ")
+        # Sunucu tarafında da şifreleme yapıyoruz (Çift Yönlü İletişim)
+        if hasattr(cipher_strategy, 'encrypt'):
+            server_encrypted_response = cipher_strategy.encrypt(response_text, server_side_key)
+        else:
+            server_encrypted_response = response_text # Klasiklerde düz metin dönebilir
+
+        end_time = time.perf_counter()
+        process_ms = (end_time - start_time) * 1000
+
+        print(f"\n[INFO] {method.upper()} İşlemi Tamamlandı")
+        print(f"[*] Çözülen Metin: {plaintext}")
+        print(f"[*] Sunucu İşlem Süresi: {process_ms:.4f} ms")
 
         return jsonify({
             "success": True,
             "method": method,
-            "original_message": plaintext
+            "server_response": server_encrypted_response, # İstemcinin çözeceği şifreli yanıt
+            "server_duration_ms": process_ms
         })
+
     except Exception as e:
+        print(f"[!] Hata: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
+@app.route('/encrypt_file', methods=['POST'])
+def encrypt_file():
+    try:
+        data = request.get_json()
+        ciphertext = data.get('ciphertext')
+        file_name = data.get('fileName')
+        method = data.get('method')
+        
+        cipher_strategy = CIPHER_MAP.get(method)
+        server_side_key = CURRENT_SESSION.get("symmetric_key")
+
+        # 1. Deşifreleme (Manuel fonksiyon Base64 string döner)
+        decrypted_payload = cipher_strategy.decrypt(ciphertext, server_side_key)
+        
+        # 2. Base64'ten Byte'a Dönüştürme (Hata Kontrolü ile)
+        try:
+            # strip() ile olası boşlukları temizliyoruz
+            file_bytes = base64.b64decode(decrypted_payload.strip())
+        except Exception as b64e:
+            return jsonify({"success": False, "error": f"Base64 hatası: {str(b64e)}"}), 400
+
+        # 3. Klasör Kontrolü ve Kayıt
+        upload_dir = "uploads"
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+            
+        file_path = os.path.join(upload_dir, file_name)
+        with open(file_path, "wb") as f:
+            f.write(file_bytes)
+            
+        print(f"\n[FILE_SUCCESS] ✅ {file_name} kaydedildi.")
+        return jsonify({"success": True, "message": f"{file_name} başarıyla yüklendi."})
+        
+    except Exception as e:
+        print(f"[ERROR] Dosya işleme hatası: {str(e)}")
+        return jsonify({"success": False, "error": str(e)}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
