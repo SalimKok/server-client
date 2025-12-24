@@ -2,7 +2,6 @@ import base64
 import os
 from .cipher_interface import CipherInterface
 
-# --- Sabit Tablolar ---
 S_BOX = [
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
     0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0,
@@ -50,11 +49,10 @@ R_CON = [
 
 class AESCipher(CipherInterface):
     def __init__(self):
-        self.nb = 4  # Blok sayısı (kelime cinsinden)
-        self.nk = 4  # Anahtar uzunluğu (kelime cinsinden)
-        self.nr = 10 # Tur sayısı
+        self.nb = 4  
+        self.nk = 4 
+        self.nr = 10 
 
-    # --- Yardımcı Fonksiyonlar ---
     def _sub_word(self, word):
         return [S_BOX[b] for b in word]
 
@@ -97,7 +95,6 @@ class AESCipher(CipherInterface):
             b >>= 1
         return p & 0xFF
 
-    # --- Manuel Şifreleme Adımları ---
     def _sub_bytes(self, state):
         for r in range(4):
             for c in range(4):
@@ -119,7 +116,6 @@ class AESCipher(CipherInterface):
             state[3][i] = self._gmul(c[0], 0x03) ^ c[1] ^ c[2] ^ self._gmul(c[3], 0x02)
         return state
 
-    # --- Manuel Deşifreleme Adımları ---
     def _inv_sub_bytes(self, state):
         for r in range(4):
             for c in range(4):
@@ -141,7 +137,6 @@ class AESCipher(CipherInterface):
             state[3][i] = self._gmul(c[0], 0x0b) ^ self._gmul(c[1], 0x0d) ^ self._gmul(c[2], 0x09) ^ self._gmul(c[3], 0x0e)
         return state
 
-    # --- Blok İşlemleri ---
     def _encrypt_block(self, plaintext_block, w):
         state = [[0]*4 for _ in range(4)]
         for r in range(4):
@@ -184,7 +179,6 @@ class AESCipher(CipherInterface):
             for r in range(4): output.append(state[r][c])
         return output
 
-    # --- Padding (PKCS7) ---
     def _pkcs7_pad(self, data):
         pad_len = 16 - (len(data) % 16)
         return data + bytes([pad_len] * pad_len)
@@ -193,12 +187,11 @@ class AESCipher(CipherInterface):
         pad_len = data[-1]
         return data[:-pad_len]
 
-    # --- ANA METOTLAR (MANUEL CBC) ---
     def encrypt(self, text: str, key: str) -> str:
         """Kütüphanesiz Manuel AES-256-CBC Şifreleme"""
         try:
             key_bytes = key.encode('utf-8').ljust(32, b' ')[:32]
-            self.nk, self.nr = 8, 14 # AES-256 ayarları
+            self.nk, self.nr = 8, 14 
             w = self._key_expansion(key_bytes)
 
             iv = os.urandom(16)
@@ -236,7 +229,6 @@ class AESCipher(CipherInterface):
             for i in range(0, len(ciphertext), 16):
                 block = ciphertext[i:i+16]
                 decrypted_block = self._decrypt_block(block, w)
-                # CBC XOR işlemi
                 plain_block = [d ^ p for d, p in zip(decrypted_block, prev_block)]
                 decrypted_bytes.extend(plain_block)
                 prev_block = block

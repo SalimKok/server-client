@@ -2,7 +2,6 @@ import base64
 import os
 from .cipher_interface import CipherInterface
 
-# --- Sabit Tablolar (Permütasyonlar, S-Box, Key Schedule) ---
 PI = [58, 50, 42, 34, 26, 18, 10, 2, 60, 52, 44, 36, 28, 20, 12, 4,
       62, 54, 46, 38, 30, 22, 14, 6, 64, 56, 48, 40, 32, 24, 16, 8,
       57, 49, 41, 33, 25, 17, 9, 1, 59, 51, 43, 35, 27, 19, 11, 3,
@@ -67,7 +66,6 @@ PC_2 = [14, 17, 11, 24, 1, 5, 3, 28, 15, 6, 21, 10, 23, 19, 12, 4,
 SHIFT_TABLE = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1]
 
 class DESCipher(CipherInterface):
-    # --- Yardımcı Bit İşleme Fonksiyonları ---
     def _bin_to_int(self, bits):
         res = 0
         for bit in bits:
@@ -112,7 +110,6 @@ class DESCipher(CipherInterface):
             output.extend(self._int_to_bin(S_BOX[i // 6][row][col], 4))
         return self._permute(output, P)
 
-    # --- Manuel CBC ve Padding İşlemleri ---
     def _pkcs7_pad(self, data):
         pad_len = 8 - (len(data) % 8)
         return data + bytes([pad_len] * pad_len)
@@ -125,7 +122,6 @@ class DESCipher(CipherInterface):
             L, R = R, self._xor(L, self._f_function(R, k))
         return self._permute(R + L, PI_1)
 
-    # --- ANA METOTLAR (MANUEL CBC) ---
     def encrypt(self, text: str, key: str) -> str:
         """Kütüphanesiz Manuel DES-CBC Şifreleme"""
         try:
@@ -136,7 +132,6 @@ class DESCipher(CipherInterface):
             plaintext = self._pkcs7_pad(text.encode('utf-8'))
             
             ciphertext = bytearray()
-            # CBC başlangıç IV bitleri
             prev_bits = []
             for b in iv: prev_bits.extend(self._int_to_bin(b, 8))
 
@@ -145,11 +140,9 @@ class DESCipher(CipherInterface):
                 block_bits = []
                 for b in block_bytes: block_bits.extend(self._int_to_bin(b, 8))
                 
-                # CBC XOR
                 xor_bits = self._xor(block_bits, prev_bits)
                 encrypted_bits = self._process_block(xor_bits, subkeys)
-                
-                # Bitleri byte'a çevir ve ekle
+       
                 for j in range(0, 64, 8):
                     ciphertext.append(self._bin_to_int(encrypted_bits[j:j+8]))
                 prev_bits = encrypted_bits
@@ -162,7 +155,7 @@ class DESCipher(CipherInterface):
         """Kütüphanesiz Manuel DES-CBC Deşifreleme"""
         try:
             key_bytes = key.encode('utf-8').ljust(8, b' ')[:8]
-            subkeys = self._generate_keys(key_bytes)[::-1] # Ters anahtarlar
+            subkeys = self._generate_keys(key_bytes)[::-1]
 
             raw_data = base64.b64decode(text)
             iv_bytes, ct_bytes = raw_data[:8], raw_data[8:]
@@ -178,14 +171,12 @@ class DESCipher(CipherInterface):
                 for b in ct_bytes[i:i+8]: block_bits.extend(self._int_to_bin(b, 8))
                 
                 processed_bits = self._process_block(block_bits, subkeys)
-                # CBC XOR
                 plain_bits = self._xor(processed_bits, prev_cipher_bits)
                 
                 for j in range(0, 64, 8):
                     decrypted_bytes.append(self._bin_to_int(plain_bits[j:j+8]))
                 prev_cipher_bits = block_bits
 
-            # PKCS7 Unpad
             pad_len = decrypted_bytes[-1]
             return bytes(decrypted_bytes[:-pad_len]).decode('utf-8')
         except Exception as e:
