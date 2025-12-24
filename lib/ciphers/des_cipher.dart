@@ -9,7 +9,6 @@ class DesCipherAlgo implements CipherBase {
   @override
   String get id => "des";
 
-  // Rastgele 8 karakterlik anahtar üretir
   static String generateRandomKey() {
     const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
     return String.fromCharCodes(Iterable.generate(8, (_) => chars.codeUnitAt(Random.secure().nextInt(chars.length))));
@@ -26,7 +25,6 @@ class DesCipherAlgo implements CipherBase {
     return base64.encode(ivBytes + encrypted);
   }
 
-  // Sunucu yanıtını çözmek için
   String decrypt(String base64Ciphertext, String keyStr) {
     List<int> combined = base64.decode(base64Ciphertext);
     List<int> keyBytes = utf8.encode(keyStr.padRight(8, ' ').substring(0, 8));
