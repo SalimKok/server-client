@@ -19,6 +19,8 @@ import 'ciphers/playfair.dart';
 import 'ciphers/polybius.dart';
 import 'ciphers/vernam.dart';
 import 'ciphers/route.dart';
+import 'package:elliptic/elliptic.dart' as elliptic;
+import 'ciphers/ecc_algo.dart';
 
 void main() => runApp(const MyApp());
 
@@ -33,11 +35,11 @@ class MyApp extends StatelessWidget {
       theme: ThemeData(
         brightness: Brightness.dark,
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFF000000), // Saf Siyah
-        fontFamily: 'monospace', // Terminal Fontu
+        scaffoldBackgroundColor: const Color(0xFF000000),
+        fontFamily: 'monospace',
         colorScheme: const ColorScheme.dark(
-          primary: Color(0xFF00FF41), // Matrix Green
-          secondary: Color(0xFF00F3FF), // Cyber Blue
+          primary: Color(0xFF00FF41),
+          secondary: Color(0xFF00F3FF),
           surface: Color(0xFF0D0D0D),
         ),
       ),
@@ -54,9 +56,10 @@ class CryptoHome extends StatefulWidget {
 }
 
 class _CryptoHomeState extends State<CryptoHome> {
-  // Mantıksal Değişkenler (Aynen Korundu)
   final List<CipherBase> algorithms = [
-    AesCipherAlgo(), DesCipherAlgo(), CaesarCipher(), VigenereCipher(),
+    AesCipherAlgo(), DesCipherAlgo(),
+    EccCipherAlgo(),
+    CaesarCipher(), VigenereCipher(),
     AffineCipher(), RailFenceCipher(), SubstitutionCipher(), ColumnarCipher(),
     HillCipher(), PlayfairCipher(), PolybiusCipher(), VernamCipher(), RouteCipher()
   ];
@@ -82,13 +85,17 @@ class _CryptoHomeState extends State<CryptoHome> {
     fetchPublicKey();
   }
 
-  // MANTIKSAL FONKSİYONLAR (HİÇBİR DEĞİŞİKLİK YAPILMADI)
   void generateRandomKey() {
     setState(() {
       if (selectedAlgorithm is AesCipherAlgo) {
         keyController.text = AesCipherAlgo.generateRandomKey();
       } else if (selectedAlgorithm is DesCipherAlgo) {
         keyController.text = DesCipherAlgo.generateRandomKey();
+      } else if (selectedAlgorithm is EccCipherAlgo) {
+
+        final ec = elliptic.getP256();
+        final private = ec.generatePrivateKey();
+        keyController.text = private.toHex();
       } else {
         keyController.text = (Random().nextInt(20) + 1).toString();
       }
@@ -110,16 +117,25 @@ class _CryptoHomeState extends State<CryptoHome> {
   void performEncryption() {
     if (selectedAlgorithm == null || msgController.text.isEmpty || keyController.text.isEmpty) return;
     FocusScope.of(context).unfocus();
-    final stopwatch = Stopwatch()..start();
-    String result = selectedAlgorithm!.encrypt(msgController.text, keyController.text);
-    stopwatch.stop();
-    setState(() {
-      encryptedText = result;
-      encryptionDuration = stopwatch.elapsedMicroseconds / 1000.0;
-      serverResponse = "";
-      decryptedServerMsg = "";
-      _isSuccess = false;
-    });
+
+    try {
+      final stopwatch = Stopwatch()..start();
+      String result = selectedAlgorithm!.encrypt(msgController.text, keyController.text);
+      stopwatch.stop();
+
+      setState(() {
+        encryptedText = result;
+        encryptionDuration = stopwatch.elapsedMicroseconds / 1000.0;
+        serverResponse = "";
+        decryptedServerMsg = "";
+        _isSuccess = false;
+      });
+    } catch (e) {
+      setState(() {
+        encryptedText = "ERROR: ${e.toString()}";
+        _isSuccess = false;
+      });
+    }
   }
 
   Future<void> pickAndSendFile() async {
@@ -147,47 +163,91 @@ class _CryptoHomeState extends State<CryptoHome> {
     }
   }
 
+
   Future<void> sendToServer() async {
     if (encryptedText.isEmpty) return;
-    bool needsHandshake = (selectedAlgorithm is AesCipherAlgo || selectedAlgorithm is DesCipherAlgo);
-    setState(() { _isSending = true; serverResponse = "INITIATING_HANDSHAKE..."; });
+
+    setState(() { _isSending = true; serverResponse = "CONNECTING_TO_CORE..."; });
+
     try {
-      if (needsHandshake) {
-        if (serverPublicKey == null) await fetchPublicKey();
-        String sessionKey = keyController.text;
-        String encryptedSessionKey = RsaCipher().encrypt(sessionKey, serverPublicKey!);
-        await http.post(Uri.parse("$baseUrl/handshake"),
+      if (selectedAlgorithm is EccCipherAlgo) {
+
+        final ec = elliptic.getP256();
+        final private = elliptic.PrivateKey.fromHex(ec, keyController.text);
+        final publicHex = private.publicKey.toHex();
+
+        final response = await http.post(Uri.parse("$baseUrl/verify_signature"),
           headers: {"Content-Type": "application/json"},
-          body: jsonEncode({"encrypted_session_key": encryptedSessionKey, "method": selectedAlgorithm!.id}),
+          body: jsonEncode({
+            "message": msgController.text,
+            "signature": encryptedText,
+            "public_key": publicHex,
+            "method": "ecc"
+          }),
         );
-      }
-      final msgResponse = await http.post(Uri.parse("$baseUrl/decrypt_message"),
-        headers: {"Content-Type": "application/json"},
-        body: jsonEncode({"ciphertext": encryptedText, "method": selectedAlgorithm!.id}),
-      );
-      final responseData = jsonDecode(msgResponse.body);
-      if (msgResponse.statusCode == 200) {
-        String serverCiphertext = responseData['server_response'] ?? "";
-        String plainResponse = "";
-        if (selectedAlgorithm is AesCipherAlgo) {
-          plainResponse = (selectedAlgorithm as AesCipherAlgo).decrypt(serverCiphertext, keyController.text);
-        } else if (selectedAlgorithm is DesCipherAlgo) {
-          plainResponse = (selectedAlgorithm as DesCipherAlgo).decrypt(serverCiphertext, keyController.text);
+
+        final responseData = jsonDecode(response.body);
+        if (response.statusCode == 200) {
+          setState(() {
+            serverResponse = "INTEGRITY_CHECK: ${responseData['status']}";
+            _isSuccess = responseData['valid'] == true;
+          });
         } else {
-          plainResponse = "RESPONSE_DECRYPTED_SUCCESSFULLY";
+          throw Exception(responseData['error']);
         }
-        setState(() { serverResponse = "ACCESS_GRANTED: SERVER_DECRYPTED"; decryptedServerMsg = plainResponse; _isSuccess = true; });
+
       } else {
-        throw Exception(responseData['error'] ?? "AUTH_FAILED");
+
+        bool needsHandshake = (selectedAlgorithm is AesCipherAlgo || selectedAlgorithm is DesCipherAlgo);
+
+        if (needsHandshake) {
+          if (serverPublicKey == null) await fetchPublicKey();
+          String sessionKey = keyController.text;
+          String encryptedSessionKey = RsaCipher().encrypt(sessionKey, serverPublicKey!);
+
+          await http.post(Uri.parse("$baseUrl/handshake"),
+            headers: {"Content-Type": "application/json"},
+            body: jsonEncode({"encrypted_session_key": encryptedSessionKey, "method": selectedAlgorithm!.id}),
+          );
+        }
+
+        final msgResponse = await http.post(Uri.parse("$baseUrl/decrypt_message"),
+          headers: {"Content-Type": "application/json"},
+          body: jsonEncode({"ciphertext": encryptedText, "method": selectedAlgorithm!.id}),
+        );
+
+        final responseData = jsonDecode(msgResponse.body);
+
+        if (msgResponse.statusCode == 200) {
+          String serverCiphertext = responseData['server_response'] ?? "";
+          String plainResponse = "";
+
+          if (selectedAlgorithm is AesCipherAlgo) {
+            plainResponse = (selectedAlgorithm as AesCipherAlgo).decrypt(serverCiphertext, keyController.text);
+          } else if (selectedAlgorithm is DesCipherAlgo) {
+            plainResponse = (selectedAlgorithm as DesCipherAlgo).decrypt(serverCiphertext, keyController.text);
+          } else {
+            plainResponse = "RESPONSE_DECRYPTED";
+          }
+
+          setState(() {
+            serverResponse = "ACCESS_GRANTED: DECRYPTED";
+            decryptedServerMsg = plainResponse;
+            _isSuccess = true;
+          });
+        } else {
+          throw Exception(responseData['error'] ?? "AUTH_FAILED");
+        }
       }
+
     } catch (e) {
-      setState(() { serverResponse = "SYSLOG: $e"; _isSuccess = false; });
+      setState(() { serverResponse = "FATAL_ERROR: $e"; _isSuccess = false; });
     } finally {
       setState(() { _isSending = false; });
     }
   }
 
-  // GÖRSEL TASARIM GÜNCELLEMELERİ
+
   @override
   Widget build(BuildContext context) {
     const neonGreen = Color(0xFF00FF41);
@@ -209,7 +269,7 @@ class _CryptoHomeState extends State<CryptoHome> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Kontrol Paneli Kartı
+
             Container(
               decoration: BoxDecoration(
                 border: Border.all(color: neonGreen.withOpacity(0.3)),
