@@ -17,6 +17,7 @@ from strategies.playfair import PlayfairCipher
 from strategies.polybius import PolybiusCipher
 from strategies.vernam import VernamCipher
 from strategies.route import RouteCipher
+from strategies.ecc_cipher import ECCCipher
 
 try:
     from strategies.rsa import RSACipher as RSATool
@@ -64,6 +65,7 @@ CIPHER_MAP = {
     'hill' : HillCipher(),
     'vernam' : VernamCipher(),
     'route' : RouteCipher(),
+    'ecc' : ECCCipher(),
 }
 
 @app.route('/get_public_key', methods=['GET'])
@@ -95,6 +97,49 @@ def handshake():
         return jsonify({"success": True, "message": "Handshake başarılı."})
     else:
         return jsonify({"success": False, "error": "RSA çözme hatası."}), 400
+
+@app.route('/verify_signature', methods=['POST'])
+def verify_signature():
+    """ECC İmzası Doğrulama Servisi"""
+    try:
+        data = request.json
+        method = data.get('method')
+
+        if method != 'ecc':
+            return jsonify({'error': 'Invalid method'}), 400
+
+        message = data.get('message')       
+        signature = data.get('signature')   
+        public_key_hex = data.get('public_key')
+
+        if not all([message, signature, public_key_hex]):
+            return jsonify({'error': 'Eksik parametreler'}), 400
+
+        print(f"\n[ECC] Doğrulama İsteği Geldi...")
+        print(f"Mesaj: {message}")
+        print(f"İmza: {signature[:30]}...") 
+
+        ecc_strategy = CIPHER_MAP.get('ecc')
+        is_valid = ecc_strategy.verify_client_hex(message, signature, public_key_hex)
+
+        if is_valid:
+            print("[ECC] ✅ İMZA GEÇERLİ! Mesaj bütünlüğü doğrulandı.")
+            return jsonify({
+                'status': 'VERIFIED',
+                'valid': True,
+                'message': 'İmza doğrulandı. Mesaj güvenilir.'
+            }), 200
+        else:
+            print("[ECC] ❌ İMZA GEÇERSİZ! Güvenlik uyarısı.")
+            return jsonify({
+                'status': 'FAILED',
+                'valid': False,
+                'error': 'İmza geçersiz! Mesaj değiştirilmiş olabilir.'
+            }), 200
+
+    except Exception as e:
+        print(f"[ECC ERROR] {str(e)}")
+        return jsonify({'error': str(e)}), 500
 
 
 @app.route('/decrypt_message', methods=['POST'])
